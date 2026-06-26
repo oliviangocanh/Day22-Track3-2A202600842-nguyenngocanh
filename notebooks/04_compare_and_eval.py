@@ -71,12 +71,17 @@ import gc
 
 def generate_with_adapter(adapter_path: Path, prompts: list[dict], max_new_tokens: int = 256):
     """Load base + adapter, generate for all prompts, free memory, return outputs."""
-    model, tokenizer = FastLanguageModel.from_pretrained(
+    model, _ = FastLanguageModel.from_pretrained(
         model_name=BASE_MODEL,
         max_seq_length=MAX_LEN,
         dtype=None,
         load_in_4bit=True,
     )
+    # Load the tokenizer saved alongside the adapter (NB1/NB3) — it carries the
+    # ChatML chat_template. The base Qwen2.5 tokenizer ships without one, so using
+    # it would break apply_chat_template below.
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained(str(adapter_path))
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 

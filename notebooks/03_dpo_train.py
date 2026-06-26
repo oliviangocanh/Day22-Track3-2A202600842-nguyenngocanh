@@ -77,11 +77,13 @@ assert torch.cuda.is_available(), "DPO needs a CUDA GPU. See HARDWARE-GUIDE.md."
 
 # %%
 from unsloth import FastLanguageModel
-from peft import PeftModel
 
-# Policy — gets new DPO LoRA adapter on top of SFT LoRA
+# Canonical Unsloth "continue finetuning from a saved LoRA": load the SFT
+# checkpoint directly. Unsloth reads adapter_config.json in SFT_PATH, loads the
+# 4-bit base + SFT adapter, and returns a trainable, optimized model.
+# Do NOT call get_peft_model again (it raises "You already added LoRA adapters").
 model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name=BASE_MODEL,
+    model_name=str(SFT_PATH),
     max_seq_length=MAX_LEN,
     dtype=None,
     load_in_4bit=True,
@@ -89,29 +91,19 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-# Load SFT adapter on top of base
-model = PeftModel.from_pretrained(model, str(SFT_PATH), is_trainable=True)
-print(f"Policy: {model.__class__.__name__} with SFT adapter loaded")
+# Safety: ensure LoRA params are trainable so DPO can update them.
+for _name, _p in model.named_parameters():
+    if "lora_" in _name.lower():
+        _p.requires_grad_(True)
+print(f"Policy: loaded SFT checkpoint from {SFT_PATH} (DPO continues on it)")
 
 # %%
-# Wrap policy with NEW LoRA adapter for DPO updates (don't merge SFT — keep stacked)
-# Unsloth re-applies LoRA on top of the existing PeftModel.
-model = FastLanguageModel.get_peft_model(
-    model,
-    r=16,
-    lora_alpha=32,
-    lora_dropout=0.0,
-    bias="none",
-    target_modules=[
-        "q_proj", "k_proj", "v_proj", "o_proj",
-        "gate_proj", "up_proj", "down_proj",
-    ],
-    use_gradient_checkpointing="unsloth",
-    random_state=42,
-    use_rslora=False,
-    loftq_config=None,
-)
-print(f"Trainable params (DPO LoRA): {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+# No second get_peft_model — the model already has the (trainable) SFT LoRA.
+# DPO continues training that adapter, so adapters/dpo ends up = SFT+DPO combined,
+# which makes NB4's (base + adapters/dpo) correctly represent "SFT+DPO".
+trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"Trainable params (DPO on SFT LoRA): {trainable:,}")
+assert trainable > 0, "LoRA not trainable — check SFT_PATH / adapter_config.json"
 
 # %% [markdown]
 # > **Why no separate `ref_model=` argument?** Modern TRL (≥ 0.12) auto-detects

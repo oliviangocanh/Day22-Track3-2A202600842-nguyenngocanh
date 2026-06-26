@@ -57,21 +57,19 @@ assert torch.cuda.is_available()
 
 # %%
 from unsloth import FastLanguageModel
-from peft import PeftModel
 
+# adapters/dpo already contains the combined SFT+DPO adapter (see NB3), so load it
+# directly to merge the fully aligned model.
+# (Previously this loaded only the SFT adapter, so the merge dropped the DPO part.)
 model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name=BASE_MODEL,
+    model_name=str(DPO_PATH),
     max_seq_length=MAX_LEN,
     dtype=None,
     load_in_4bit=True,
 )
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
-
-# Stack SFT-mini → DPO adapters
-SFT_PATH = REPO_ROOT / "adapters" / "sft-mini"
-model = PeftModel.from_pretrained(model, str(SFT_PATH))
-print(f"Loaded SFT-mini adapter from {SFT_PATH}")
+print(f"Loaded SFT+DPO adapter from {DPO_PATH}")
 
 # %% [markdown]
 # > **Note:** The DPO adapter trained in NB3 stacks on top of SFT. To get a fully
