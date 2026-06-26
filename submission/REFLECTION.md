@@ -2,7 +2,6 @@
 
 **Tên:** Nguyễn Ngọc Anh
 **MSSV:** 2A202600842
-**Cohort:** _<điền cohort, vd A20-K1>_
 **Tier đã chạy:** T4 (Free Colab)
 **Date:** 2026-06-26
 
